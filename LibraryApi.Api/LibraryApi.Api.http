@@ -1,0 +1,52 @@
+@host = http://localhost:5227
+
+### Queries: read side (no-tracking context, projected straight to responses)
+
+GET {{host}}/authors
+
+###
+GET {{host}}/books?search=tolkien
+
+###
+GET {{host}}/books?availableOnly=true
+
+###
+GET {{host}}/members
+
+###
+GET {{host}}/loans/overdue
+
+### Commands: write side (tracked context, domain rules)
+
+POST {{host}}/authors
+Content-Type: application/json
+
+{
+  "firstName": "Terry",
+  "lastName": "Pratchett",
+  "birthYear": 1948
+}
+
+### Validation pipeline behavior -> 422
+POST {{host}}/books
+Content-Type: application/json
+
+{
+  "title": "",
+  "isbn": "123",
+  "publishedYear": 1000,
+  "authorId": "00000000-0000-0000-0000-000000000000",
+  "totalCopies": 0
+}
+
+### Borrow a book (paste ids from the queries above)
+POST {{host}}/loans
+Content-Type: application/json
+
+{
+  "bookId": "<book-id>",
+  "memberId": "<member-id>"
+}
+
+### Return a book
+POST {{host}}/loans/<loan-id>/return
