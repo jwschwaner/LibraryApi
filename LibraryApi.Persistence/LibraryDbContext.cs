@@ -3,21 +3,14 @@ using LibraryApi.Domain.Authors;
 using LibraryApi.Domain.Books;
 using LibraryApi.Domain.Loans;
 using LibraryApi.Domain.Members;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver;
 
 namespace LibraryApi.Persistence;
 
-public class LibraryDbContext(DbContextOptions<LibraryDbContext> options) : DbContext(options), IApplicationDbContext
+public sealed class LibraryDbContext(IMongoDatabase database) : IApplicationDbContext
 {
-    public DbSet<Author> Authors => Set<Author>();
-    public DbSet<Book> Books => Set<Book>();
-    public DbSet<Member> Members => Set<Member>();
-    public DbSet<Loan> Loans => Set<Loan>();
-
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        modelBuilder.ApplyConfigurationsFromAssembly(typeof(LibraryDbContext).Assembly);
-
-        base.OnModelCreating(modelBuilder);
-    }
+    public IMongoCollection<Author> Authors => database.GetCollection<Author>(CollectionNames.Authors);
+    public IMongoCollection<Book> Books => database.GetCollection<Book>(CollectionNames.Books);
+    public IMongoCollection<Member> Members => database.GetCollection<Member>(CollectionNames.Members);
+    public IMongoCollection<Loan> Loans => database.GetCollection<Loan>(CollectionNames.Loans);
 }
