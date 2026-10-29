@@ -2,16 +2,18 @@ using LibraryApi.Domain.Authors;
 using LibraryApi.Domain.Books;
 using LibraryApi.Domain.Loans;
 using LibraryApi.Domain.Members;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver;
 
 namespace LibraryApi.Application.Interfaces;
 
-/// <summary>The write side: command handlers load tracked entities, change them and save.</summary>
+/// <summary>
+/// The write side: command handlers load entities, call domain methods and write each changed
+/// document back. MongoDB has no change tracker, so every insert, replace and delete is explicit.
+/// </summary>
 public interface IApplicationDbContext
 {
-    DbSet<Author> Authors { get; }
-    DbSet<Book> Books { get; }
-    DbSet<Member> Members { get; }
-    DbSet<Loan> Loans { get; }
-    Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    IMongoCollection<Author> Authors { get; }
+    IMongoCollection<Book> Books { get; }
+    IMongoCollection<Member> Members { get; }
+    IMongoCollection<Loan> Loans { get; }
 }

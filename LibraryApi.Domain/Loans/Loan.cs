@@ -43,7 +43,7 @@ public sealed class Loan : AuditedEntity
             throw new DomainException(LoanErrors.LoanLimitReached,
                 $"Member already has {MaxActiveLoansPerMember} books on loan");
 
-        return new Loan
+        var loan = new Loan
         {
             Id = Guid.CreateVersion7(),
             BookId = bookId,
@@ -51,6 +51,8 @@ public sealed class Loan : AuditedEntity
             BorrowedAtUtc = nowUtc,
             DueOn = DateOnly.FromDateTime(nowUtc).AddDays(LoanPeriodDays)
         };
+        loan.MarkCreated(nowUtc);
+        return loan;
     }
 
     public void Return(DateTime nowUtc)
@@ -59,5 +61,6 @@ public sealed class Loan : AuditedEntity
             throw new DomainException(LoanErrors.AlreadyReturned, "This loan has already been returned");
 
         ReturnedAtUtc = nowUtc;
+        MarkUpdated(nowUtc);
     }
 }

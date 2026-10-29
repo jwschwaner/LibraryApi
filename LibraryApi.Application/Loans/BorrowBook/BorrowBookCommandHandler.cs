@@ -3,7 +3,7 @@ using LibraryApi.Application.Results;
 using LibraryApi.Domain.Common;
 using LibraryApi.Domain.Loans;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver;
 
 namespace LibraryApi.Application.Loans.BorrowBook;
 
@@ -16,11 +16,11 @@ public sealed class BorrowBookCommandHandler(IApplicationDbContext dbContext, Ti
         BorrowBookCommand command,
         CancellationToken cancellationToken)
     {
-        var book = await dbContext.Books.SingleOrDefaultAsync(b => b.Id == command.BookId, cancellationToken);
+        var book = await dbContext.Books.Find(b => b.Id == command.BookId).SingleOrDefaultAsync(cancellationToken);
         if (book is null)
             return CommandResult.NotFound<LoanResponse>("Book");
 
-        var memberExists = await dbContext.Members.AnyAsync(m => m.Id == command.MemberId, cancellationToken);
+        var memberExists = await dbContext.Members.Find(m => m.Id == command.MemberId).AnyAsync(cancellationToken);
         if (!memberExists)
             return CommandResult.NotFound<LoanResponse>("Member");
 
@@ -28,11 +28,12 @@ public sealed class BorrowBookCommandHandler(IApplicationDbContext dbContext, Ti
         var today = DateOnly.FromDateTime(now);
 
         // Snapshot what the lending rules need; Loan.Create decides
-        var activeLoansForBook = await dbContext.Loans
-            .CountAsync(l => l.BookId == command.BookId && l.ReturnedAtUtc == null, cancellationToken);
-        var memberLoanDueDates = await dbContext.Loans
-            .Where(l => l.MemberId == command.MemberId && l.ReturnedAtUtc == null)
-            .Select(l => l.DueOn)
+        var activeLoansForBook = (int)await dbContext.Loans.CountDocumentsAsync(
+            l => l.BookId == command.BookId && l.ReturnedAtUtc == null,
+            cancellationToken: cancellationToken);
+        var memberLoans = await dbContext.Loans
+            .Find(l => l.MemberId == command.MemberId && l.ReturnedAtUtc == null)
+            .Project(l => new { l.DueOn })
             .ToListAsync(cancellationToken);
 
         Loan loan;
@@ -43,8 +44,8 @@ public sealed class BorrowBookCommandHandler(IApplicationDbContext dbContext, Ti
                 command.MemberId,
                 book.TotalCopies,
                 activeLoansForBook,
-                memberLoanDueDates.Count,
-                memberLoanDueDates.Any(dueOn => dueOn < today),
+                memberLoans.Count,
+                memberLoans.Any(l => l.DueOn < today),
                 now);
         }
         catch (DomainException ex)
@@ -52,8 +53,7 @@ public sealed class BorrowBookCommandHandler(IApplicationDbContext dbContext, Ti
             return CommandResult.Conflict<LoanResponse>(ex.Message);
         }
 
-        dbContext.Loans.Add(loan);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await dbContext.Loans.InsertOneAsync(loan, cancellationToken: cancellationToken);
 
         return CommandResult.Created(new LoanResponse(
             loan.Id, loan.BookId, loan.MemberId, loan.BorrowedAtUtc, loan.DueOn, loan.ReturnedAtUtc));

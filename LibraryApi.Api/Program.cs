@@ -1,8 +1,6 @@
 using LibraryApi.Api.Middleware;
 using LibraryApi.Application;
 using LibraryApi.Persistence;
-using LibraryApi.Persistence.Seeding;
-using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,14 +23,7 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<LibraryDbContext>();
-    await db.Database.MigrateAsync();
-
-    if (app.Environment.IsDevelopment())
-        await DemoDataSeeder.SeedAsync(db);
-}
+await app.Services.InitializeDatabaseAsync(seedDemoData: app.Environment.IsDevelopment());
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

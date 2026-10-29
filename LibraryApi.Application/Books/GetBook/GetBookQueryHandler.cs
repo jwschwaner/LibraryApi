@@ -1,7 +1,6 @@
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 
 namespace LibraryApi.Application.Books.GetBook;
 
@@ -12,11 +11,10 @@ public sealed class GetBookQueryHandler(IReadonlyApplicationDbContext readonlyDb
 {
     public async ValueTask<QueryResult<BookResponse>> Handle(GetBookQuery query, CancellationToken cancellationToken)
     {
-        var book = await readonlyDbContext.Books
+        var books = await readonlyDbContext.Books
             .Where(b => b.Id == query.Id)
-            .SelectBookResponse(readonlyDbContext)
-            .SingleOrDefaultAsync(cancellationToken);
+            .ToBookResponsesAsync(readonlyDbContext, cancellationToken);
 
-        return QueryResult.FromNullable(book, "Book");
+        return QueryResult.FromNullable(books.SingleOrDefault(), "Book");
     }
 }

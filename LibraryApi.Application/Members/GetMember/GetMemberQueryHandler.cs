@@ -1,7 +1,7 @@
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver.Linq;
 
 namespace LibraryApi.Application.Members.GetMember;
 
@@ -23,22 +23,35 @@ public sealed class GetMemberQueryHandler(IReadonlyApplicationDbContext readonly
         GetMemberQuery query,
         CancellationToken cancellationToken)
     {
-        var today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
-
         var member = await readonlyDbContext.Members
             .Where(m => m.Id == query.Id)
-            .Select(m => new MemberDetailsResponse(
-                m.Id,
-                m.FullName,
-                m.Email,
-                readonlyDbContext.Loans
-                    .Where(l => l.MemberId == m.Id && l.ReturnedAtUtc == null)
-                    .OrderBy(l => l.DueOn)
-                    .Join(readonlyDbContext.Books, l => l.BookId, b => b.Id,
-                        (l, b) => new MemberLoanResponse(l.Id, b.Id, b.Title, l.DueOn, l.DueOn < today))
-                    .ToList()))
+            .Select(m => new { m.Id, m.FullName, m.Email })
             .SingleOrDefaultAsync(cancellationToken);
+        if (member is null)
+            return QueryResult.NotFound<MemberDetailsResponse>("Member");
 
-        return QueryResult.FromNullable(member, "Member");
+        var loans = await readonlyDbContext.Loans
+            .Where(l => l.MemberId == query.Id && l.ReturnedAtUtc == null)
+            .OrderBy(l => l.DueOn)
+            .Select(l => new { l.Id, l.BookId, l.DueOn })
+            .ToListAsync(cancellationToken);
+
+        var bookIds = loans.Select(l => l.BookId).Distinct().ToList();
+        var bookTitles = (await readonlyDbContext.Books
+                .Where(b => bookIds.Contains(b.Id))
+                .Select(b => new { b.Id, b.Title })
+                .ToListAsync(cancellationToken))
+            .ToDictionary(b => b.Id, b => b.Title);
+
+        var today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
+
+        return QueryResult.Success(new MemberDetailsResponse(
+            member.Id,
+            member.FullName,
+            member.Email,
+            loans
+                .Select(l => new MemberLoanResponse(
+                    l.Id, l.BookId, bookTitles.GetValueOrDefault(l.BookId, ""), l.DueOn, l.DueOn < today))
+                .ToList()));
     }
 }
