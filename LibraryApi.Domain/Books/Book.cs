@@ -14,12 +14,13 @@ public sealed class Book : AuditedEntity
     /// <summary>How many physical copies the library owns. Availability is derived from active loans.</summary>
     public int TotalCopies { get; private set; }
 
-    public static Book Create(string title, string isbn, int publishedYear, Guid authorId, int totalCopies)
+    public static Book Create(string title, string isbn, int publishedYear, Guid authorId, int totalCopies,
+        DateTime nowUtc)
     {
         if (totalCopies < 1)
             throw new DomainException(BookErrors.InvalidCopyCount, "A book must have at least one copy");
 
-        return new Book
+        var book = new Book
         {
             Id = Guid.CreateVersion7(),
             Title = title.Trim(),
@@ -28,10 +29,12 @@ public sealed class Book : AuditedEntity
             AuthorId = authorId,
             TotalCopies = totalCopies
         };
+        book.MarkCreated(nowUtc);
+        return book;
     }
 
     /// <param name="activeLoans">Copies currently lent out; the library can't own fewer copies than that.</param>
-    public void Update(string title, int publishedYear, int totalCopies, int activeLoans)
+    public void Update(string title, int publishedYear, int totalCopies, int activeLoans, DateTime nowUtc)
     {
         if (totalCopies < 1)
             throw new DomainException(BookErrors.InvalidCopyCount, "A book must have at least one copy");
@@ -42,5 +45,6 @@ public sealed class Book : AuditedEntity
         Title = title.Trim();
         PublishedYear = publishedYear;
         TotalCopies = totalCopies;
+        MarkUpdated(nowUtc);
     }
 }

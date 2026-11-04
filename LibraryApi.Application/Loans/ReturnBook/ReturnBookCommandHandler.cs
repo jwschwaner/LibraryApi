@@ -2,7 +2,7 @@ using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
 using LibraryApi.Domain.Common;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver;
 
 namespace LibraryApi.Application.Loans.ReturnBook;
 
@@ -15,7 +15,7 @@ public sealed class ReturnBookCommandHandler(IApplicationDbContext dbContext, Ti
         ReturnBookCommand command,
         CancellationToken cancellationToken)
     {
-        var loan = await dbContext.Loans.SingleOrDefaultAsync(l => l.Id == command.LoanId, cancellationToken);
+        var loan = await dbContext.Loans.Find(l => l.Id == command.LoanId).SingleOrDefaultAsync(cancellationToken);
         if (loan is null)
             return CommandResult.NotFound<EmptyResult>("Loan");
 
@@ -28,7 +28,7 @@ public sealed class ReturnBookCommandHandler(IApplicationDbContext dbContext, Ti
             return CommandResult.Conflict<EmptyResult>(ex.Message);
         }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await dbContext.Loans.ReplaceOneAsync(l => l.Id == loan.Id, loan, cancellationToken: cancellationToken);
 
         return CommandResult.Success();
     }

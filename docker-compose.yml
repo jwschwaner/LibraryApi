@@ -1,0 +1,11 @@
+services:
+  mongo:
+    image: mongo:8
+    container_name: library-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - library-mongo-data:/data/db
+
+volumes:
+  library-mongo-data:

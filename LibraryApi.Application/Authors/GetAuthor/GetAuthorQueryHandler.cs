@@ -1,7 +1,7 @@
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver.Linq;
 
 namespace LibraryApi.Application.Authors.GetAuthor;
 
@@ -24,20 +24,21 @@ public sealed class GetAuthorQueryHandler(IReadonlyApplicationDbContext readonly
         GetAuthorQuery query,
         CancellationToken cancellationToken)
     {
-        // Project straight to the response: the read side never materialises domain entities
+        // Project in the database: the read side never materialises domain entities
         var author = await readonlyDbContext.Authors
             .Where(a => a.Id == query.Id)
-            .Select(a => new AuthorDetailsResponse(
-                a.Id,
-                a.FirstName,
-                a.LastName,
-                a.BirthYear,
-                a.Books
-                    .OrderBy(b => b.PublishedYear)
-                    .Select(b => new AuthorBookResponse(b.Id, b.Title, b.PublishedYear))
-                    .ToList()))
+            .Select(a => new { a.Id, a.FirstName, a.LastName, a.BirthYear })
             .SingleOrDefaultAsync(cancellationToken);
+        if (author is null)
+            return QueryResult.NotFound<AuthorDetailsResponse>("Author");
 
-        return QueryResult.FromNullable(author, "Author");
+        var books = await readonlyDbContext.Books
+            .Where(b => b.AuthorId == query.Id)
+            .OrderBy(b => b.PublishedYear)
+            .Select(b => new AuthorBookResponse(b.Id, b.Title, b.PublishedYear))
+            .ToListAsync(cancellationToken);
+
+        return QueryResult.Success(new AuthorDetailsResponse(
+            author.Id, author.FirstName, author.LastName, author.BirthYear, books));
     }
 }

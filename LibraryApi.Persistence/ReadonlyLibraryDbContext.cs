@@ -3,26 +3,17 @@ using LibraryApi.Domain.Authors;
 using LibraryApi.Domain.Books;
 using LibraryApi.Domain.Loans;
 using LibraryApi.Domain.Members;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver;
 
 namespace LibraryApi.Persistence;
 
-public sealed class ReadonlyLibraryDbContext : LibraryDbContext, IReadonlyApplicationDbContext
+/// <summary>
+/// Hands query handlers LINQ queryables only, so they have no way to insert, replace or delete.
+/// </summary>
+public sealed class ReadonlyLibraryDbContext(IMongoDatabase database) : IReadonlyApplicationDbContext
 {
-    public ReadonlyLibraryDbContext(DbContextOptions<LibraryDbContext> options)
-        : base(options)
-    {
-        ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
-    }
-
-    IQueryable<Author> IReadonlyApplicationDbContext.Authors => Authors;
-    IQueryable<Book> IReadonlyApplicationDbContext.Books => Books;
-    IQueryable<Member> IReadonlyApplicationDbContext.Members => Members;
-    IQueryable<Loan> IReadonlyApplicationDbContext.Loans => Loans;
-
-    public override int SaveChanges()
-        => throw new NotSupportedException("Readonly context: SaveChanges is not allowed.");
-
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
-        => throw new NotSupportedException("Readonly context: SaveChangesAsync is not allowed.");
+    public IQueryable<Author> Authors => database.GetCollection<Author>(CollectionNames.Authors).AsQueryable();
+    public IQueryable<Book> Books => database.GetCollection<Book>(CollectionNames.Books).AsQueryable();
+    public IQueryable<Member> Members => database.GetCollection<Member>(CollectionNames.Members).AsQueryable();
+    public IQueryable<Loan> Loans => database.GetCollection<Loan>(CollectionNames.Loans).AsQueryable();
 }

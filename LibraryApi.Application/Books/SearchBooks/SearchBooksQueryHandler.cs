@@ -1,7 +1,9 @@
+using System.Text.RegularExpressions;
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
+using LibraryApi.Domain.Books;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver.Linq;
 
 namespace LibraryApi.Application.Books.SearchBooks;
 
@@ -17,26 +19,28 @@ public sealed class SearchBooksQueryHandler(IReadonlyApplicationDbContext readon
         SearchBooksQuery query,
         CancellationToken cancellationToken)
     {
-        // Filter on the entities and project last: EF can't translate filters on the response record
-        var books = readonlyDbContext.Books;
+        IQueryable<Book> books = readonlyDbContext.Books;
 
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
-            var term = query.Search.Trim().ToLower();
-            books = books.Where(b =>
-                b.Title.ToLower().Contains(term) ||
-                readonlyDbContext.Authors.Any(a =>
-                    a.Id == b.AuthorId && (a.FirstName + " " + a.LastName).ToLower().Contains(term)));
-        }
+            // Translated to a case-insensitive $regex; escaped so user input is matched literally
+            var pattern = new Regex(Regex.Escape(query.Search.Trim()), RegexOptions.IgnoreCase);
 
-        if (query.AvailableOnly)
-            books = books.Where(b =>
-                readonlyDbContext.Loans.Count(l => l.BookId == b.Id && l.ReturnedAtUtc == null) < b.TotalCopies);
+            var authorIds = await readonlyDbContext.Authors
+                .Where(a => pattern.IsMatch(a.FirstName) || pattern.IsMatch(a.LastName))
+                .Select(a => a.Id)
+                .ToListAsync(cancellationToken);
+
+            books = books.Where(b => pattern.IsMatch(b.Title) || authorIds.Contains(b.AuthorId));
+        }
 
         var result = await books
             .OrderBy(b => b.Title)
-            .SelectBookResponse(readonlyDbContext)
-            .ToListAsync(cancellationToken);
+            .ToBookResponsesAsync(readonlyDbContext, cancellationToken);
+
+        // Availability is derived from the loans collection, so it can only be filtered here
+        if (query.AvailableOnly)
+            result = result.Where(b => b.AvailableCopies > 0).ToList();
 
         return QueryResult.Success<IReadOnlyList<BookResponse>>(result);
     }
