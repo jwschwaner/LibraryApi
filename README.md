@@ -79,8 +79,55 @@ The rules are checked against counts read just before the insert, without a tran
 two simultaneous requests for the last copy could both succeed. Fine for a demo; a real
 system would use an atomic conditional update or a transaction (needs a replica set).
 
+## Tests
+
+xUnit throughout, in three projects:
+
+| Project | Contains |
+| --- | --- |
+| `LibraryApi.UnitTests` | The domain rules (`Loan`, `Book`, `Member`). No mocks, no Docker. |
+| `LibraryApi.IntegrationTests` | Boots the real API with `WebApplicationFactory<Program>` against a MongoDB container, one folder per feature (`Loans/BorrowBookTests.cs`, ...). |
+| `LibraryApi.Tests.Common` | Shared test infrastructure, not a test project (`IsTestProject=false`): the MongoDB fixture, builders, `ApiResponse<T>` and `CommonAssertions`. |
+
+```bash
+dotnet test                                  # everything; needs Docker running
+dotnet test LibraryApi.UnitTests             # fast loop without Docker
+dotnet test --filter "FullyQualifiedName~BorrowBookTests"
+```
+
+**Integration tests are where query handlers are tested.** Their pipelines name fields as
+strings, so a typo compiles and only fails against a real database. `MongoDbFixture` starts one
+`mongo:7.0` container per run through Testcontainers, shared by every class in the `MongoDb`
+xUnit collection. `IntegrationTestBase` drops the database and starts a fresh API host before
+each test, and gives you `PersistAsync(...)` (writes entities through the API's own
+`IApplicationDbContext`, so the real BSON mappings apply) and `GetAsync` / `PostAsync` /
+`PutAsync` / `DeleteAsync`, which return an `ApiResponse<T>` with the status code, raw body,
+deserialized body and the API's error body.
+
+**Time is frozen.** The API's `TimeProvider` is replaced by a `FakeTimeProvider` set to
+`TestConstants.NowUtc`, and the builders stamp entities with the same instant, so due dates and
+"overdue" are exact.
+
+**Test data comes from the builders** in `Tests.Common/Builders`: `Simple()` for the least that's
+valid, `Typical()` for a fully populated entity, `WithX()` setters, then `Build()`, which goes
+through the entity's `Create` factory so test data obeys the domain rules. ISBNs and emails are
+unique per builder, because both have unique indexes. `LoanBuilder.Of(book, member)` takes
+`.Overdue(days)` and `.Returned()`.
+
+**Conventions**
+
+- Test names are `Given_..._When_..._Then_...`, with `// Arrange`, `// Act` and `// Assert`
+  sections.
+- Integration test classes are one per endpoint, `sealed`, marked
+  `[Collection(MongoDbFixture.CollectionName)]` and derived from `IntegrationTestBase`.
+- Unit test classes nest one class per method under test (`LoanTests.Create`, `LoanTests.Return`).
+- Assert status codes with `CommonAssertions`; `IsConflict(response, message)` also checks which
+  rule refused the request.
+
 ## Libraries
 
 - [Mediator](https://github.com/martinothamar/Mediator) (source-generated, MIT). Not MediatR.
 - [MongoDB.Driver](https://github.com/mongodb/mongo-csharp-driver) (official, Apache-2.0).
 - FluentValidation, Scalar for the API reference.
+- Tests: xUnit, [Testcontainers](https://dotnet.testcontainers.org/) for MongoDB,
+  `Microsoft.AspNetCore.Mvc.Testing` and `Microsoft.Extensions.TimeProvider.Testing`.

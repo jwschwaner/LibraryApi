@@ -8,6 +8,7 @@ is and how it is structured.
 - Start MongoDB: `docker compose up -d` (localhost:27017, database `library`)
 - Run: `dotnet run --project LibraryApi.Api` (http://localhost:5227, Scalar at `/`)
 - Build: `dotnet build`
+- Test: `dotnet test` (needs Docker for the integration tests); `dotnet test LibraryApi.UnitTests` for the fast loop
 
 ## Git conventions
 
@@ -25,3 +26,4 @@ is and how it is structured.
 - Handlers return results (`CommandResult.NotFound`, `.Conflict`, ...) for expected outcomes rather than throwing. Domain rule violations throw `DomainException`; handlers catch it and map it to a result.
 - Entities are `sealed`, have a private parameterless ctor for EF, private setters and static `Create` factories. Never call `DateTime.UtcNow` in the domain. Inject `TimeProvider` in handlers and pass the time in; factories and behavior methods use it for the `CreatedAtUtc` / `UpdatedAtUtc` audit fields too.
 - Controllers stay thin: build the message, `sender.Send`, `ToActionResult()` / `ToCreatedResult()`. Request bodies are records under `Controllers/<Feature>/Requests/` with a `ToCommand()` mapper.
+- Every new endpoint gets integration tests in `LibraryApi.IntegrationTests/<Feature>/<UseCase>Tests.cs`: they are the only thing that checks query pipelines (string field names) against a real database. Domain rules get unit tests in `LibraryApi.UnitTests`, without mocks. Seed data with the builders in `LibraryApi.Tests.Common/Builders` (add a `WithX()` rather than constructing entities by hand), name tests `Given_..._When_..._Then_...` with Arrange/Act/Assert sections, and assert HTTP outcomes with `CommonAssertions`. See the Tests section of README.md.
