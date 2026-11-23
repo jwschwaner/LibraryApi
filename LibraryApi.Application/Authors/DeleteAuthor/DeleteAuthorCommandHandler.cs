@@ -1,5 +1,7 @@
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
+using LibraryApi.Domain.Authors;
+using LibraryApi.Domain.Books;
 using Mediator;
 using MongoDB.Driver;
 
@@ -14,16 +16,16 @@ public sealed class DeleteAuthorCommandHandler(IApplicationDbContext dbContext)
         DeleteAuthorCommand command,
         CancellationToken cancellationToken)
     {
-        var authorExists = await dbContext.Authors.Find(a => a.Id == command.Id).AnyAsync(cancellationToken);
+        var authorExists = await dbContext.Authors.Find(Builders<Author>.Filter.Eq(a => a.Id, command.Id)).AnyAsync(cancellationToken);
         if (!authorExists)
             return CommandResult.NotFound<EmptyResult>("Author");
 
         // MongoDB has no foreign keys, so the handler is the only thing protecting the books
-        var hasBooks = await dbContext.Books.Find(b => b.AuthorId == command.Id).AnyAsync(cancellationToken);
+        var hasBooks = await dbContext.Books.Find(Builders<Book>.Filter.Eq(b => b.AuthorId, command.Id)).AnyAsync(cancellationToken);
         if (hasBooks)
             return CommandResult.Conflict<EmptyResult>("Cannot delete an author who has books in the catalogue");
 
-        await dbContext.Authors.DeleteOneAsync(a => a.Id == command.Id, cancellationToken);
+        await dbContext.Authors.DeleteOneAsync(Builders<Author>.Filter.Eq(a => a.Id, command.Id), cancellationToken);
 
         return CommandResult.Success();
     }

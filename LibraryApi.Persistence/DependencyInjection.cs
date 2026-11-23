@@ -23,7 +23,7 @@ public static class DependencyInjection
                 // The client is thread-safe and owns the connection pool: one per process
                 .AddSingleton<IMongoClient>(_ => new MongoClient(url))
                 .AddSingleton(sp => sp.GetRequiredService<IMongoClient>().GetDatabase(url.DatabaseName))
-                // Commands get the collections, queries only LINQ queryables over them
+                // Commands get the collections, queries only read-only views of them
                 .AddScoped<LibraryDbContext>()
                 .AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<LibraryDbContext>())
                 .AddScoped<IReadonlyApplicationDbContext, ReadonlyLibraryDbContext>()

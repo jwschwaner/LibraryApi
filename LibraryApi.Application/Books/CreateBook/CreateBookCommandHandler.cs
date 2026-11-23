@@ -1,5 +1,6 @@
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
+using LibraryApi.Domain.Authors;
 using LibraryApi.Domain.Books;
 using Mediator;
 using MongoDB.Driver;
@@ -23,11 +24,11 @@ public sealed class CreateBookCommandHandler(IApplicationDbContext dbContext, Ti
         CreateBookCommand command,
         CancellationToken cancellationToken)
     {
-        var authorExists = await dbContext.Authors.Find(a => a.Id == command.AuthorId).AnyAsync(cancellationToken);
+        var authorExists = await dbContext.Authors.Find(Builders<Author>.Filter.Eq(a => a.Id, command.AuthorId)).AnyAsync(cancellationToken);
         if (!authorExists)
             return CommandResult.NotFound<CreateBookResponse>("Author");
 
-        var isbnTaken = await dbContext.Books.Find(b => b.Isbn == command.Isbn).AnyAsync(cancellationToken);
+        var isbnTaken = await dbContext.Books.Find(Builders<Book>.Filter.Eq(b => b.Isbn, command.Isbn)).AnyAsync(cancellationToken);
         if (isbnTaken)
             return CommandResult.Conflict<CreateBookResponse>($"A book with ISBN {command.Isbn} already exists");
 

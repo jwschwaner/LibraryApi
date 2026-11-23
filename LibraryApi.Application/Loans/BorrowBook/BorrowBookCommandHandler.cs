@@ -1,7 +1,9 @@
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
+using LibraryApi.Domain.Books;
 using LibraryApi.Domain.Common;
 using LibraryApi.Domain.Loans;
+using LibraryApi.Domain.Members;
 using Mediator;
 using MongoDB.Driver;
 
@@ -16,11 +18,11 @@ public sealed class BorrowBookCommandHandler(IApplicationDbContext dbContext, Ti
         BorrowBookCommand command,
         CancellationToken cancellationToken)
     {
-        var book = await dbContext.Books.Find(b => b.Id == command.BookId).SingleOrDefaultAsync(cancellationToken);
+        var book = await dbContext.Books.Find(Builders<Book>.Filter.Eq(b => b.Id, command.BookId)).SingleOrDefaultAsync(cancellationToken);
         if (book is null)
             return CommandResult.NotFound<LoanResponse>("Book");
 
-        var memberExists = await dbContext.Members.Find(m => m.Id == command.MemberId).AnyAsync(cancellationToken);
+        var memberExists = await dbContext.Members.Find(Builders<Member>.Filter.Eq(m => m.Id, command.MemberId)).AnyAsync(cancellationToken);
         if (!memberExists)
             return CommandResult.NotFound<LoanResponse>("Member");
 
@@ -28,11 +30,12 @@ public sealed class BorrowBookCommandHandler(IApplicationDbContext dbContext, Ti
         var today = DateOnly.FromDateTime(now);
 
         // Snapshot what the lending rules need; Loan.Create decides
+        var activeLoan = Builders<Loan>.Filter.Eq(l => l.ReturnedAtUtc, null);
         var activeLoansForBook = (int)await dbContext.Loans.CountDocumentsAsync(
-            l => l.BookId == command.BookId && l.ReturnedAtUtc == null,
+            Builders<Loan>.Filter.Eq(l => l.BookId, command.BookId) & activeLoan,
             cancellationToken: cancellationToken);
         var memberLoans = await dbContext.Loans
-            .Find(l => l.MemberId == command.MemberId && l.ReturnedAtUtc == null)
+            .Find(Builders<Loan>.Filter.Eq(l => l.MemberId, command.MemberId) & activeLoan)
             .Project(l => new { l.DueOn })
             .ToListAsync(cancellationToken);
 

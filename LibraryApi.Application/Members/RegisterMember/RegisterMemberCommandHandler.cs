@@ -17,7 +17,7 @@ public sealed class RegisterMemberCommandHandler(IApplicationDbContext dbContext
     {
         var member = Member.Create(command.FullName, command.Email, timeProvider.GetUtcNow().UtcDateTime);
 
-        var emailTaken = await dbContext.Members.Find(m => m.Email == member.Email).AnyAsync(cancellationToken);
+        var emailTaken = await dbContext.Members.Find(Builders<Member>.Filter.Eq(m => m.Email, member.Email)).AnyAsync(cancellationToken);
         if (emailTaken)
             return CommandResult.Conflict<MemberResponse>("A member with this email already exists");
 

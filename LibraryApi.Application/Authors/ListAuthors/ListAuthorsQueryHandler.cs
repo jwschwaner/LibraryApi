@@ -1,7 +1,8 @@
+using LibraryApi.Application.Common;
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
 using Mediator;
-using MongoDB.Driver.Linq;
+using MongoDB.Bson;
 
 namespace LibraryApi.Application.Authors.ListAuthors;
 
@@ -14,12 +15,19 @@ public sealed class ListAuthorsQueryHandler(IReadonlyApplicationDbContext readon
         ListAuthorsQuery query,
         CancellationToken cancellationToken)
     {
-        var authors = await readonlyDbContext.Authors
-            .OrderBy(a => a.LastName)
-            .ThenBy(a => a.FirstName)
-            .Select(a => new AuthorResponse(a.Id, a.FirstName, a.LastName, a.BirthYear))
-            .ToListAsync(cancellationToken);
+        var authors = await readonlyDbContext.Authors.AggregateAsync(
+            [
+                new("$sort", new BsonDocument { { "lastName", 1 }, { "firstName", 1 } }),
+                new("$project", new BsonDocument { { "firstName", 1 }, { "lastName", 1 }, { "birthYear", 1 } })
+            ],
+            cancellationToken);
 
-        return QueryResult.Success<IReadOnlyList<AuthorResponse>>(authors);
+        return QueryResult.Success<IReadOnlyList<AuthorResponse>>(authors
+            .Select(x => new AuthorResponse(
+                x["_id"].AsGuid,
+                x["firstName"].AsString,
+                x["lastName"].AsString,
+                x["birthYear"].ToNullableInt32()))
+            .ToList());
     }
 }

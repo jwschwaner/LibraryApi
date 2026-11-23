@@ -1,7 +1,8 @@
+using LibraryApi.Application.Common;
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
 using Mediator;
-using MongoDB.Driver.Linq;
+using MongoDB.Bson;
 
 namespace LibraryApi.Application.Members.GetMember;
 
@@ -23,35 +24,51 @@ public sealed class GetMemberQueryHandler(IReadonlyApplicationDbContext readonly
         GetMemberQuery query,
         CancellationToken cancellationToken)
     {
-        var member = await readonlyDbContext.Members
-            .Where(m => m.Id == query.Id)
-            .Select(m => new { m.Id, m.FullName, m.Email })
-            .SingleOrDefaultAsync(cancellationToken);
+        var members = await readonlyDbContext.Members.AggregateAsync(
+            [
+                new("$match", new BsonDocument("_id", query.Id.ToBson())),
+                new("$project", new BsonDocument { { "fullName", 1 }, { "email", 1 } })
+            ],
+            cancellationToken);
+        var member = members.SingleOrDefault();
         if (member is null)
             return QueryResult.NotFound<MemberDetailsResponse>("Member");
 
-        var loans = await readonlyDbContext.Loans
-            .Where(l => l.MemberId == query.Id && l.ReturnedAtUtc == null)
-            .OrderBy(l => l.DueOn)
-            .Select(l => new { l.Id, l.BookId, l.DueOn })
-            .ToListAsync(cancellationToken);
+        var loans = await readonlyDbContext.Loans.AggregateAsync(
+            [
+                new("$match", new BsonDocument
+                {
+                    { "memberId", query.Id.ToBson() },
+                    { "returnedAtUtc", BsonNull.Value }
+                }),
+                new("$sort", new BsonDocument("dueOn", 1)),
+                new("$project", new BsonDocument { { "bookId", 1 }, { "dueOn", 1 } })
+            ],
+            cancellationToken);
 
-        var bookIds = loans.Select(l => l.BookId).Distinct().ToList();
-        var bookTitles = (await readonlyDbContext.Books
-                .Where(b => bookIds.Contains(b.Id))
-                .Select(b => new { b.Id, b.Title })
-                .ToListAsync(cancellationToken))
-            .ToDictionary(b => b.Id, b => b.Title);
+        var bookIds = loans.Select(x => x["bookId"].AsGuid).Distinct();
+        var books = await readonlyDbContext.Books.AggregateAsync(
+            [
+                new("$match", new BsonDocument("_id", new BsonDocument("$in", bookIds.ToBson()))),
+                new("$project", new BsonDocument("title", 1))
+            ],
+            cancellationToken);
+        var bookTitles = books.ToDictionary(x => x["_id"].AsGuid, x => x["title"].AsString);
 
         var today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
 
         return QueryResult.Success(new MemberDetailsResponse(
-            member.Id,
-            member.FullName,
-            member.Email,
+            member["_id"].AsGuid,
+            member["fullName"].AsString,
+            member["email"].AsString,
             loans
-                .Select(l => new MemberLoanResponse(
-                    l.Id, l.BookId, bookTitles.GetValueOrDefault(l.BookId, ""), l.DueOn, l.DueOn < today))
+                .Select(x =>
+                {
+                    var bookId = x["bookId"].AsGuid;
+                    var dueOn = x["dueOn"].ToDateOnly();
+                    return new MemberLoanResponse(
+                        x["_id"].AsGuid, bookId, bookTitles.GetValueOrDefault(bookId, ""), dueOn, dueOn < today);
+                })
                 .ToList()));
     }
 }

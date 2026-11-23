@@ -52,10 +52,15 @@ LoansController ◄─ result.ToCreatedResult(...)  → 201 / 404 / 409 / 422
   `IApplicationDbContext`, which exposes the `IMongoCollection<T>`s: load an entity, call a
   domain method, then insert, replace or delete the document explicitly.
 - **Queries** (`IQuery<QueryResult<T>>`) only read. Handlers use
-  `IReadonlyApplicationDbContext`, which exposes nothing but LINQ `IQueryable<T>`s, so a
-  query has no way to write. They project in the database and never return entities.
-  MongoDB doesn't join collections in a plain query, so a response that needs another
-  collection (author names, copies on loan) runs one extra query per collection.
+  `IReadonlyApplicationDbContext`, whose collections only run aggregation pipelines (and
+  reject `$out` and `$merge`), so a query has no way to write. They project in the database
+  and map the returned documents to response records, never to entities. Each pipeline
+  reads one collection, so a response that needs another collection (author names, copies
+  on loan) runs one extra query per collection instead of a `$lookup`.
+
+Queries are written as inline `List<BsonDocument>` pipelines with the stored (camelCase) field
+names. Commands load entities with typed `Builders<T>` filters. The driver's LINQ provider
+(`AsQueryable()`, `MongoDB.Driver.Linq`) isn't used.
 
 Both sides share one database. The split is about code paths and intent, not separate
 stores.

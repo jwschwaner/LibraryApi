@@ -1,6 +1,8 @@
+using LibraryApi.Application.Common;
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
 using Mediator;
+using MongoDB.Bson;
 
 namespace LibraryApi.Application.Books.GetBook;
 
@@ -11,9 +13,8 @@ public sealed class GetBookQueryHandler(IReadonlyApplicationDbContext readonlyDb
 {
     public async ValueTask<QueryResult<BookResponse>> Handle(GetBookQuery query, CancellationToken cancellationToken)
     {
-        var books = await readonlyDbContext.Books
-            .Where(b => b.Id == query.Id)
-            .ToBookResponsesAsync(readonlyDbContext, cancellationToken);
+        var books = await readonlyDbContext.GetBookResponsesAsync(
+            new BsonDocument("_id", query.Id.ToBson()), sort: null, cancellationToken);
 
         return QueryResult.FromNullable(books.SingleOrDefault(), "Book");
     }

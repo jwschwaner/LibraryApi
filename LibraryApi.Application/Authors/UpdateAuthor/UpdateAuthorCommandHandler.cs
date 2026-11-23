@@ -1,5 +1,6 @@
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
+using LibraryApi.Domain.Authors;
 using Mediator;
 using MongoDB.Driver;
 
@@ -15,12 +16,12 @@ public sealed class UpdateAuthorCommandHandler(IApplicationDbContext dbContext, 
         UpdateAuthorCommand command,
         CancellationToken cancellationToken)
     {
-        var author = await dbContext.Authors.Find(a => a.Id == command.Id).SingleOrDefaultAsync(cancellationToken);
+        var author = await dbContext.Authors.Find(Builders<Author>.Filter.Eq(a => a.Id, command.Id)).SingleOrDefaultAsync(cancellationToken);
         if (author is null)
             return CommandResult.NotFound<EmptyResult>("Author");
 
         author.Update(command.FirstName, command.LastName, command.BirthYear, timeProvider.GetUtcNow().UtcDateTime);
-        await dbContext.Authors.ReplaceOneAsync(a => a.Id == author.Id, author, cancellationToken: cancellationToken);
+        await dbContext.Authors.ReplaceOneAsync(Builders<Author>.Filter.Eq(a => a.Id, author.Id), author, cancellationToken: cancellationToken);
 
         return CommandResult.Success();
     }

@@ -1,6 +1,8 @@
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
+using LibraryApi.Domain.Books;
 using LibraryApi.Domain.Common;
+using LibraryApi.Domain.Loans;
 using Mediator;
 using MongoDB.Driver;
 
@@ -16,12 +18,12 @@ public sealed class UpdateBookCommandHandler(IApplicationDbContext dbContext, Ti
         UpdateBookCommand command,
         CancellationToken cancellationToken)
     {
-        var book = await dbContext.Books.Find(b => b.Id == command.Id).SingleOrDefaultAsync(cancellationToken);
+        var book = await dbContext.Books.Find(Builders<Book>.Filter.Eq(b => b.Id, command.Id)).SingleOrDefaultAsync(cancellationToken);
         if (book is null)
             return CommandResult.NotFound<EmptyResult>("Book");
 
         var activeLoans = (int)await dbContext.Loans.CountDocumentsAsync(
-            l => l.BookId == command.Id && l.ReturnedAtUtc == null,
+            Builders<Loan>.Filter.Eq(l => l.BookId, command.Id) & Builders<Loan>.Filter.Eq(l => l.ReturnedAtUtc, null),
             cancellationToken: cancellationToken);
 
         try
@@ -34,7 +36,7 @@ public sealed class UpdateBookCommandHandler(IApplicationDbContext dbContext, Ti
             return CommandResult.Conflict<EmptyResult>(ex.Message);
         }
 
-        await dbContext.Books.ReplaceOneAsync(b => b.Id == book.Id, book, cancellationToken: cancellationToken);
+        await dbContext.Books.ReplaceOneAsync(Builders<Book>.Filter.Eq(b => b.Id, book.Id), book, cancellationToken: cancellationToken);
 
         return CommandResult.Success();
     }
