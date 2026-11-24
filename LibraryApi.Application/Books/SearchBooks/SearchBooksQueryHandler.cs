@@ -1,8 +1,11 @@
 using System.Text.RegularExpressions;
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
+using LibraryApi.Domain.Authors;
+using LibraryApi.Domain.Books;
 using Mediator;
 using MongoDB.Bson;
+using MongoDB.Driver;
 
 namespace LibraryApi.Application.Books.SearchBooks;
 
@@ -18,7 +21,7 @@ public sealed class SearchBooksQueryHandler(IReadonlyApplicationDbContext readon
         SearchBooksQuery query,
         CancellationToken cancellationToken)
     {
-        var filter = new BsonDocument();
+        var filter = Builders<Book>.Filter.Empty;
 
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
@@ -26,25 +29,18 @@ public sealed class SearchBooksQueryHandler(IReadonlyApplicationDbContext readon
             var pattern = new BsonRegularExpression(Regex.Escape(query.Search.Trim()), "i");
 
             var authors = await readonlyDbContext.Authors.AggregateAsync(
-                [
-                    new("$match", new BsonDocument("$or", new BsonArray
-                    {
-                        new BsonDocument("firstName", pattern),
-                        new BsonDocument("lastName", pattern)
-                    })),
-                    new("$project", new BsonDocument("_id", 1))
-                ],
+                new EmptyPipelineDefinition<Author>()
+                    .Match(Builders<Author>.Filter.Regex(a => a.FirstName, pattern)
+                           | Builders<Author>.Filter.Regex(a => a.LastName, pattern))
+                    .Project(a => new { a.Id }),
                 cancellationToken);
 
-            filter.Add("$or", new BsonArray
-            {
-                new BsonDocument("title", pattern),
-                new BsonDocument("authorId", new BsonDocument("$in", new BsonArray(authors.Select(x => x["_id"]))))
-            });
+            filter = Builders<Book>.Filter.Regex(b => b.Title, pattern)
+                     | Builders<Book>.Filter.In(b => b.AuthorId, authors.Select(a => a.Id));
         }
 
         var result = await readonlyDbContext.GetBookResponsesAsync(
-            filter, new BsonDocument("title", 1), cancellationToken);
+            filter, Builders<Book>.Sort.Ascending(b => b.Title), cancellationToken);
 
         // Availability is derived from the loans collection, so it can only be filtered here
         if (query.AvailableOnly)

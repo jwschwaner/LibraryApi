@@ -1,6 +1,8 @@
-using LibraryApi.Application.Common;
 using LibraryApi.Application.Interfaces;
-using MongoDB.Bson;
+using LibraryApi.Domain.Authors;
+using LibraryApi.Domain.Books;
+using LibraryApi.Domain.Loans;
+using MongoDB.Driver;
 
 namespace LibraryApi.Application.Books;
 
@@ -9,66 +11,51 @@ public static class BookResponses
     /// <summary>
     /// Finds the books matching <paramref name="filter"/> and builds a <see cref="BookResponse"/>
     /// per book. Author names and copies on loan live in other collections, so they come from one
-    /// query each, not a join.
+    /// query each.
     /// </summary>
     public static async Task<List<BookResponse>> GetBookResponsesAsync(
         this IReadonlyApplicationDbContext readonlyDbContext,
-        BsonDocument filter,
-        BsonDocument? sort,
+        FilterDefinition<Book> filter,
+        SortDefinition<Book>? sort,
         CancellationToken cancellationToken)
     {
-        var pipeline = new List<BsonDocument> { new("$match", filter) };
+        PipelineDefinition<Book, Book> pipeline = new EmptyPipelineDefinition<Book>().Match(filter);
         if (sort is not null)
-            pipeline.Add(new BsonDocument("$sort", sort));
-        pipeline.Add(new BsonDocument("$project", new BsonDocument
-        {
-            { "title", 1 }, { "isbn", 1 }, { "publishedYear", 1 }, { "authorId", 1 }, { "totalCopies", 1 }
-        }));
+            pipeline = pipeline.Sort(sort);
 
-        var books = await readonlyDbContext.Books.AggregateAsync(pipeline, cancellationToken);
+        var books = await readonlyDbContext.Books.AggregateAsync(
+            pipeline.Project(b => new { b.Id, b.Title, b.Isbn, b.PublishedYear, b.AuthorId, b.TotalCopies }),
+            cancellationToken);
         if (books.Count == 0)
             return [];
 
-        var authorIds = books.Select(x => x["authorId"].AsGuid).Distinct();
+        var authorIds = books.Select(b => b.AuthorId).Distinct();
         var authors = await readonlyDbContext.Authors.AggregateAsync(
-            [
-                new("$match", new BsonDocument("_id", new BsonDocument("$in", authorIds.ToBson()))),
-                new("$project", new BsonDocument { { "firstName", 1 }, { "lastName", 1 } })
-            ],
+            new EmptyPipelineDefinition<Author>()
+                .Match(Builders<Author>.Filter.In(a => a.Id, authorIds))
+                .Project(a => new { a.Id, a.FirstName, a.LastName }),
             cancellationToken);
-        var authorNames = authors.ToDictionary(
-            x => x["_id"].AsGuid,
-            x => $"{x["firstName"].AsString} {x["lastName"].AsString}");
+        var authorNames = authors.ToDictionary(a => a.Id, a => $"{a.FirstName} {a.LastName}");
 
-        var bookIds = books.Select(x => x["_id"].AsGuid);
+        var bookIds = books.Select(b => b.Id);
         var loanCounts = await readonlyDbContext.Loans.AggregateAsync(
-            [
-                new("$match", new BsonDocument
-                {
-                    { "bookId", new BsonDocument("$in", bookIds.ToBson()) },
-                    { "returnedAtUtc", BsonNull.Value }
-                }),
-                new("$group", new BsonDocument { { "_id", "$bookId" }, { "n", new BsonDocument("$sum", 1) } })
-            ],
+            new EmptyPipelineDefinition<Loan>()
+                .Match(Builders<Loan>.Filter.In(l => l.BookId, bookIds)
+                       & Builders<Loan>.Filter.Eq(l => l.ReturnedAtUtc, null))
+                .Group(l => l.BookId, g => new { BookId = g.Key, Count = g.Count() }),
             cancellationToken);
-        var copiesOnLoan = loanCounts.ToDictionary(x => x["_id"].AsGuid, x => x["n"].ToInt32());
+        var copiesOnLoan = loanCounts.ToDictionary(x => x.BookId, x => x.Count);
 
         return books
-            .Select(x =>
-            {
-                var id = x["_id"].AsGuid;
-                var authorId = x["authorId"].AsGuid;
-                var totalCopies = x["totalCopies"].ToInt32();
-                return new BookResponse(
-                    id,
-                    x["title"].AsString,
-                    x["isbn"].AsString,
-                    x["publishedYear"].ToInt32(),
-                    authorId,
-                    authorNames.GetValueOrDefault(authorId, ""),
-                    totalCopies,
-                    totalCopies - copiesOnLoan.GetValueOrDefault(id));
-            })
+            .Select(b => new BookResponse(
+                b.Id,
+                b.Title,
+                b.Isbn,
+                b.PublishedYear,
+                b.AuthorId,
+                authorNames.GetValueOrDefault(b.AuthorId, ""),
+                b.TotalCopies,
+                b.TotalCopies - copiesOnLoan.GetValueOrDefault(b.Id)))
             .ToList();
     }
 }

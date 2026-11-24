@@ -1,8 +1,10 @@
-using LibraryApi.Application.Common;
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
+using LibraryApi.Domain.Books;
+using LibraryApi.Domain.Loans;
+using LibraryApi.Domain.Members;
 using Mediator;
-using MongoDB.Bson;
+using MongoDB.Driver;
 
 namespace LibraryApi.Application.Loans.OverdueLoans;
 
@@ -28,51 +30,43 @@ public sealed class OverdueLoansQueryHandler(IReadonlyApplicationDbContext reado
         var today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
 
         var loans = await readonlyDbContext.Loans.AggregateAsync(
-            [
-                new("$match", new BsonDocument
-                {
-                    { "returnedAtUtc", BsonNull.Value },
-                    { "dueOn", new BsonDocument("$lt", today.ToBson()) }
-                }),
-                new("$sort", new BsonDocument("dueOn", 1)),
-                new("$project", new BsonDocument { { "bookId", 1 }, { "memberId", 1 }, { "dueOn", 1 } })
-            ],
+            new EmptyPipelineDefinition<Loan>()
+                .Match(Builders<Loan>.Filter.Eq(l => l.ReturnedAtUtc, null)
+                       & Builders<Loan>.Filter.Lt(l => l.DueOn, today))
+                .Sort(Builders<Loan>.Sort.Ascending(l => l.DueOn))
+                .Project(l => new { l.Id, l.BookId, l.MemberId, l.DueOn }),
             cancellationToken);
         if (loans.Count == 0)
             return QueryResult.Success<IReadOnlyList<OverdueLoanResponse>>([]);
 
-        var bookIds = loans.Select(x => x["bookId"].AsGuid).Distinct();
+        var bookIds = loans.Select(l => l.BookId).Distinct();
         var books = await readonlyDbContext.Books.AggregateAsync(
-            [
-                new("$match", new BsonDocument("_id", new BsonDocument("$in", bookIds.ToBson()))),
-                new("$project", new BsonDocument("title", 1))
-            ],
+            new EmptyPipelineDefinition<Book>()
+                .Match(Builders<Book>.Filter.In(b => b.Id, bookIds))
+                .Project(b => new { b.Id, b.Title }),
             cancellationToken);
-        var bookTitles = books.ToDictionary(x => x["_id"].AsGuid, x => x["title"].AsString);
+        var bookTitles = books.ToDictionary(b => b.Id, b => b.Title);
 
-        var memberIds = loans.Select(x => x["memberId"].AsGuid).Distinct();
+        var memberIds = loans.Select(l => l.MemberId).Distinct();
         var members = (await readonlyDbContext.Members.AggregateAsync(
-                [
-                    new("$match", new BsonDocument("_id", new BsonDocument("$in", memberIds.ToBson()))),
-                    new("$project", new BsonDocument { { "fullName", 1 }, { "email", 1 } })
-                ],
+                new EmptyPipelineDefinition<Member>()
+                    .Match(Builders<Member>.Filter.In(m => m.Id, memberIds))
+                    .Project(m => new { m.Id, m.FullName, m.Email }),
                 cancellationToken))
-            .ToDictionary(x => x["_id"].AsGuid);
+            .ToDictionary(m => m.Id);
 
         var result = loans
-            .Select(x =>
+            .Select(l =>
             {
-                var bookId = x["bookId"].AsGuid;
-                var memberId = x["memberId"].AsGuid;
-                var member = members.GetValueOrDefault(memberId);
+                var member = members.GetValueOrDefault(l.MemberId);
                 return new OverdueLoanResponse(
-                    x["_id"].AsGuid,
-                    bookId,
-                    bookTitles.GetValueOrDefault(bookId, ""),
-                    memberId,
-                    member?["fullName"].AsString ?? "",
-                    member?["email"].AsString ?? "",
-                    x["dueOn"].ToDateOnly());
+                    l.Id,
+                    l.BookId,
+                    bookTitles.GetValueOrDefault(l.BookId, ""),
+                    l.MemberId,
+                    member?.FullName ?? "",
+                    member?.Email ?? "",
+                    l.DueOn);
             })
             .ToList();
 
