@@ -1,3 +1,8 @@
+using LibraryApi.Domain.Authors;
+using LibraryApi.Domain.Books;
+using LibraryApi.Domain.Loans;
+using LibraryApi.Domain.Members;
+
 namespace LibraryApi.Application.Interfaces;
 
 /// <summary>
@@ -6,8 +11,8 @@ namespace LibraryApi.Application.Interfaces;
 /// </summary>
 public interface IReadonlyApplicationDbContext
 {
-    IReadonlyMongoCollection Authors { get; }
-    IReadonlyMongoCollection Books { get; }
-    IReadonlyMongoCollection Members { get; }
-    IReadonlyMongoCollection Loans { get; }
+    IReadonlyMongoCollection<Author> Authors { get; }
+    IReadonlyMongoCollection<Book> Books { get; }
+    IReadonlyMongoCollection<Member> Members { get; }
+    IReadonlyMongoCollection<Loan> Loans { get; }
 }

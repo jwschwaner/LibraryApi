@@ -1,13 +1,15 @@
-using MongoDB.Bson;
+using MongoDB.Driver;
 
 namespace LibraryApi.Application.Interfaces;
 
 /// <summary>
-/// The read half of a MongoDB collection: query handlers run aggregation pipelines written as
-/// <see cref="BsonDocument"/> stages and get raw documents back. A pipeline with a writing
+/// The read half of a MongoDB collection: query handlers run typed aggregation pipelines built
+/// with the driver's builders and get the projected results back. A pipeline with a writing
 /// stage (<c>$out</c>, <c>$merge</c>) is rejected.
 /// </summary>
-public interface IReadonlyMongoCollection
+public interface IReadonlyMongoCollection<TDocument>
 {
-    Task<List<BsonDocument>> AggregateAsync(List<BsonDocument> pipeline, CancellationToken cancellationToken);
+    Task<List<TResult>> AggregateAsync<TResult>(
+        PipelineDefinition<TDocument, TResult> pipeline,
+        CancellationToken cancellationToken);
 }

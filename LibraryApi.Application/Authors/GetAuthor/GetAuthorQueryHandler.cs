@@ -1,8 +1,9 @@
-using LibraryApi.Application.Common;
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
+using LibraryApi.Domain.Authors;
+using LibraryApi.Domain.Books;
 using Mediator;
-using MongoDB.Bson;
+using MongoDB.Driver;
 
 namespace LibraryApi.Application.Authors.GetAuthor;
 
@@ -27,30 +28,22 @@ public sealed class GetAuthorQueryHandler(IReadonlyApplicationDbContext readonly
     {
         // Project in the database: the read side never materialises domain entities
         var authors = await readonlyDbContext.Authors.AggregateAsync(
-            [
-                new("$match", new BsonDocument("_id", query.Id.ToBson())),
-                new("$project", new BsonDocument { { "firstName", 1 }, { "lastName", 1 }, { "birthYear", 1 } })
-            ],
+            new EmptyPipelineDefinition<Author>()
+                .Match(Builders<Author>.Filter.Eq(a => a.Id, query.Id))
+                .Project(a => new { a.Id, a.FirstName, a.LastName, a.BirthYear }),
             cancellationToken);
         var author = authors.SingleOrDefault();
         if (author is null)
             return QueryResult.NotFound<AuthorDetailsResponse>("Author");
 
         var books = await readonlyDbContext.Books.AggregateAsync(
-            [
-                new("$match", new BsonDocument("authorId", query.Id.ToBson())),
-                new("$sort", new BsonDocument("publishedYear", 1)),
-                new("$project", new BsonDocument { { "title", 1 }, { "publishedYear", 1 } })
-            ],
+            new EmptyPipelineDefinition<Book>()
+                .Match(Builders<Book>.Filter.Eq(b => b.AuthorId, query.Id))
+                .Sort(Builders<Book>.Sort.Ascending(b => b.PublishedYear))
+                .Project(b => new AuthorBookResponse(b.Id, b.Title, b.PublishedYear)),
             cancellationToken);
 
         return QueryResult.Success(new AuthorDetailsResponse(
-            author["_id"].AsGuid,
-            author["firstName"].AsString,
-            author["lastName"].AsString,
-            author["birthYear"].ToNullableInt32(),
-            books
-                .Select(x => new AuthorBookResponse(x["_id"].AsGuid, x["title"].AsString, x["publishedYear"].ToInt32()))
-                .ToList()));
+            author.Id, author.FirstName, author.LastName, author.BirthYear, books));
     }
 }

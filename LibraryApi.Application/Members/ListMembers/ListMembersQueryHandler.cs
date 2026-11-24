@@ -1,7 +1,8 @@
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
+using LibraryApi.Domain.Members;
 using Mediator;
-using MongoDB.Bson;
+using MongoDB.Driver;
 
 namespace LibraryApi.Application.Members.ListMembers;
 
@@ -15,14 +16,11 @@ public sealed class ListMembersQueryHandler(IReadonlyApplicationDbContext readon
         CancellationToken cancellationToken)
     {
         var members = await readonlyDbContext.Members.AggregateAsync(
-            [
-                new("$sort", new BsonDocument("fullName", 1)),
-                new("$project", new BsonDocument { { "fullName", 1 }, { "email", 1 } })
-            ],
+            new EmptyPipelineDefinition<Member>()
+                .Sort(Builders<Member>.Sort.Ascending(m => m.FullName))
+                .Project(m => new MemberResponse(m.Id, m.FullName, m.Email)),
             cancellationToken);
 
-        return QueryResult.Success<IReadOnlyList<MemberResponse>>(members
-            .Select(x => new MemberResponse(x["_id"].AsGuid, x["fullName"].AsString, x["email"].AsString))
-            .ToList());
+        return QueryResult.Success<IReadOnlyList<MemberResponse>>(members);
     }
 }

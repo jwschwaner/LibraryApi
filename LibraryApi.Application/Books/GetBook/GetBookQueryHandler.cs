@@ -1,8 +1,8 @@
-using LibraryApi.Application.Common;
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
+using LibraryApi.Domain.Books;
 using Mediator;
-using MongoDB.Bson;
+using MongoDB.Driver;
 
 namespace LibraryApi.Application.Books.GetBook;
 
@@ -14,7 +14,7 @@ public sealed class GetBookQueryHandler(IReadonlyApplicationDbContext readonlyDb
     public async ValueTask<QueryResult<BookResponse>> Handle(GetBookQuery query, CancellationToken cancellationToken)
     {
         var books = await readonlyDbContext.GetBookResponsesAsync(
-            new BsonDocument("_id", query.Id.ToBson()), sort: null, cancellationToken);
+            Builders<Book>.Filter.Eq(b => b.Id, query.Id), sort: null, cancellationToken);
 
         return QueryResult.FromNullable(books.SingleOrDefault(), "Book");
     }

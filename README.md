@@ -52,15 +52,17 @@ LoansController ◄─ result.ToCreatedResult(...)  → 201 / 404 / 409 / 422
   `IApplicationDbContext`, which exposes the `IMongoCollection<T>`s: load an entity, call a
   domain method, then insert, replace or delete the document explicitly.
 - **Queries** (`IQuery<QueryResult<T>>`) only read. Handlers use
-  `IReadonlyApplicationDbContext`, whose collections only run aggregation pipelines (and
-  reject `$out` and `$merge`), so a query has no way to write. They project in the database
-  and map the returned documents to response records, never to entities. Each pipeline
-  reads one collection, so a response that needs another collection (author names, copies
-  on loan) runs one extra query per collection instead of a `$lookup`.
+  `IReadonlyApplicationDbContext`, whose collections only run typed aggregation pipelines
+  (and reject `$out` and `$merge`), so a query has no way to write. They project in the
+  database straight to response records, never to entities. A response that needs another
+  collection (author names, copies on loan) runs one extra query per collection here; a
+  `$lookup` would be allowed too.
 
-Queries are written as inline `List<BsonDocument>` pipelines with the stored (camelCase) field
-names. Commands load entities with typed `Builders<T>` filters. The driver's LINQ provider
-(`AsQueryable()`, `MongoDB.Driver.Linq`) isn't used.
+Both sides use the driver's typesafe builders: `Builders<T>.Filter` and `.Sort`, and pipelines
+built from `new EmptyPipelineDefinition<T>()` with `.Match`, `.Sort`, `.Project` and `.Group`.
+Field names, Guids and dates go through the BSON mappings, so a renamed property is a compile
+error rather than a query that silently matches nothing. A raw `BsonDocument` stage is only
+for something the builders can't express. `AsQueryable()` isn't used.
 
 Both sides share one database. The split is about code paths and intent, not separate
 stores.
@@ -95,8 +97,9 @@ dotnet test LibraryApi.UnitTests             # fast loop without Docker
 dotnet test --filter "FullyQualifiedName~BorrowBookTests"
 ```
 
-**Integration tests are where query handlers are tested.** Their pipelines name fields as
-strings, so a typo compiles and only fails against a real database. `MongoDbFixture` starts one
+**Integration tests are where query handlers are tested.** The builders catch wrong field names
+at compile time, but only a real database shows that a pipeline translates and returns the right
+data (expression projections and any raw `BsonDocument` stage most of all). `MongoDbFixture` starts one
 `mongo:7.0` container per run through Testcontainers, shared by every class in the `MongoDb`
 xUnit collection. `IntegrationTestBase` drops the database and starts a fresh API host before
 each test, and gives you `PersistAsync(...)` (writes entities through the API's own
