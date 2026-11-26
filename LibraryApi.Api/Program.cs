@@ -1,4 +1,4 @@
-using LibraryApi.Api.Middleware;
+using LibraryApi.Api.ExceptionHandling;
 using LibraryApi.Application;
 using LibraryApi.Persistence;
 using Scalar.AspNetCore;
@@ -18,6 +18,11 @@ builder.Services.AddControllers(options =>
     options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true;
 });
 
+// Errors are ProblemDetails everywhere: our results (ResultExtensions), MVC's own 400s and
+// unhandled exceptions
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<UnhandledExceptionHandler>();
+
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
@@ -32,7 +37,7 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference(endpointPrefix: "/");
 }
 
-app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseExceptionHandler();
 
 app.MapControllers();
 

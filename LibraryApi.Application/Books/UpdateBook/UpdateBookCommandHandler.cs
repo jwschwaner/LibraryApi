@@ -1,7 +1,6 @@
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
 using LibraryApi.Domain.Books;
-using LibraryApi.Domain.Common;
 using LibraryApi.Domain.Loans;
 using Mediator;
 using MongoDB.Driver;
@@ -26,15 +25,8 @@ public sealed class UpdateBookCommandHandler(IApplicationDbContext dbContext, Ti
             Builders<Loan>.Filter.Eq(l => l.BookId, command.Id) & Builders<Loan>.Filter.Eq(l => l.ReturnedAtUtc, null),
             cancellationToken: cancellationToken);
 
-        try
-        {
-            book.Update(command.Title, command.PublishedYear, command.TotalCopies, activeLoans,
-                timeProvider.GetUtcNow().UtcDateTime);
-        }
-        catch (DomainException ex)
-        {
-            return CommandResult.Conflict<EmptyResult>(ex.Message);
-        }
+        book.Update(command.Title, command.PublishedYear, command.TotalCopies, activeLoans,
+            timeProvider.GetUtcNow().UtcDateTime);
 
         await dbContext.Books.ReplaceOneAsync(Builders<Book>.Filter.Eq(b => b.Id, book.Id), book, cancellationToken: cancellationToken);
 

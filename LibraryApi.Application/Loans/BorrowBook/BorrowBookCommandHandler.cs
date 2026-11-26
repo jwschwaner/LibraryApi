@@ -1,7 +1,6 @@
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
 using LibraryApi.Domain.Books;
-using LibraryApi.Domain.Common;
 using LibraryApi.Domain.Loans;
 using LibraryApi.Domain.Members;
 using Mediator;
@@ -39,22 +38,15 @@ public sealed class BorrowBookCommandHandler(IApplicationDbContext dbContext, Ti
             .Project(l => new { l.DueOn })
             .ToListAsync(cancellationToken);
 
-        Loan loan;
-        try
-        {
-            loan = Loan.Create(
-                book.Id,
-                command.MemberId,
-                book.TotalCopies,
-                activeLoansForBook,
-                memberLoans.Count,
-                memberLoans.Any(l => l.DueOn < today),
-                now);
-        }
-        catch (DomainException ex)
-        {
-            return CommandResult.Conflict<LoanResponse>(ex.Message);
-        }
+        // Throws DomainException when a lending rule refuses; DomainExceptionBehavior maps it to a Conflict
+        var loan = Loan.Create(
+            book.Id,
+            command.MemberId,
+            book.TotalCopies,
+            activeLoansForBook,
+            memberLoans.Count,
+            memberLoans.Any(l => l.DueOn < today),
+            now);
 
         await dbContext.Loans.InsertOneAsync(loan, cancellationToken: cancellationToken);
 

@@ -37,6 +37,7 @@ POST /loans ─► LoansController ─► ISender.Send(BorrowBookCommand)
                                      │
                     LoggingBehavior ─┤  (times every message)
                  ValidationBehavior ─┤  (FluentValidation → 422 before the handler runs)
+            DomainExceptionBehavior ─┤  (a broken rule → Conflict result with the rule's code)
                                      ▼
                        BorrowBookCommandHandler
                          loads state via IApplicationDbContext
@@ -45,6 +46,31 @@ POST /loans ─► LoansController ─► ISender.Send(BorrowBookCommand)
                                      │
 LoansController ◄─ result.ToCreatedResult(...)  → 201 / 404 / 409 / 422
 ```
+
+Handlers don't catch `DomainException`. `DomainExceptionBehavior` turns it into a Conflict
+result carrying the rule's code (`Loan.NoCopiesAvailable`), so any caller of the command gets a
+result back, not an exception.
+
+## Errors
+
+Every error is a [ProblemDetails](https://www.rfc-editor.org/rfc/rfc9457) body, built by
+ASP.NET Core's `ProblemDetailsFactory` in `ResultExtensions`. Our own errors therefore look the
+same as the framework's (for example a 400 for a body that isn't JSON):
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.10",
+  "title": "Conflict",
+  "status": 409,
+  "detail": "All copies of this book are on loan",
+  "traceId": "00-3ed36a12...",
+  "code": "Loan.NoCopiesAvailable"
+}
+```
+
+A 422 is a `ValidationProblemDetails` with the messages per field under `errors`. `code` is only
+present when a domain rule refused the request. Unhandled exceptions become a 500
+ProblemDetails through `UnhandledExceptionHandler`, without exception details.
 
 ## The CQRS split
 
@@ -69,7 +95,8 @@ stores.
 
 ## Lending rules
 
-Enforced in `Loan.Create` and `Loan.Return`, surfaced as `409 Conflict`:
+Enforced in `Loan.Create` and `Loan.Return`, surfaced as `409 Conflict` with the rule's code
+from `LoanErrors`:
 
 - A book can't be borrowed when all copies are on loan.
 - A member can have at most 3 books at a time.
@@ -105,7 +132,7 @@ xUnit collection. `IntegrationTestBase` drops the database and starts a fresh AP
 each test, and gives you `PersistAsync(...)` (writes entities through the API's own
 `IApplicationDbContext`, so the real BSON mappings apply) and `GetAsync` / `PostAsync` /
 `PutAsync` / `DeleteAsync`, which return an `ApiResponse<T>` with the status code, raw body,
-deserialized body and the API's error body.
+deserialized body and, for an error, the ProblemDetails fields as an `ApiProblem`.
 
 **Time is frozen.** The API's `TimeProvider` is replaced by a `FakeTimeProvider` set to
 `TestConstants.NowUtc`, and the builders stamp entities with the same instant, so due dates and
@@ -124,8 +151,9 @@ unique per builder, because both have unique indexes. `LoanBuilder.Of(book, memb
 - Integration test classes are one per endpoint, `sealed`, marked
   `[Collection(MongoDbFixture.CollectionName)]` and derived from `IntegrationTestBase`.
 - Unit test classes nest one class per method under test (`LoanTests.Create`, `LoanTests.Return`).
-- Assert status codes with `CommonAssertions`; `IsConflict(response, message)` also checks which
-  rule refused the request.
+- Assert status codes with `CommonAssertions`. `IsConflict(response, message, code)` also checks
+  which rule refused the request (pass the code from `LoanErrors` / `BookErrors` for a domain
+  rule), and `IsValidationError(response, "Field", ...)` checks which fields failed.
 
 ## Libraries
 

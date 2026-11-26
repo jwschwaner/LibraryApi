@@ -6,8 +6,12 @@ public static class QueryResult
 
     public static QueryResult<TResult> Failure<TResult>(ErrorType errorType) => new(default, errorType);
 
-    public static QueryResult<TResult> Failure<TResult>(ErrorType errorType, string errorMessage) =>
-        new(default, errorType, errorMessage);
+    public static QueryResult<TResult> Failure<TResult>(
+        ErrorType errorType,
+        string errorMessage,
+        string? errorCode = null,
+        IReadOnlyDictionary<string, string[]>? validationErrors = null) =>
+        new(default, errorType, errorMessage, errorCode, validationErrors);
 
     public static QueryResult<TResult> NotFound<TResult>(string? resourceName = null) =>
         new(default, ErrorType.NotFound, resourceName != null ? $"{resourceName} not found" : "Resource not found");
@@ -21,8 +25,13 @@ public static class QueryResult
 
 public class QueryResult<TResult> : BaseResult<TResult>
 {
-    internal QueryResult(TResult? result, ErrorType errorType = ErrorType.None, string? errorMessage = null)
-        : base(result, errorType, errorMessage)
+    internal QueryResult(
+        TResult? result,
+        ErrorType errorType = ErrorType.None,
+        string? errorMessage = null,
+        string? errorCode = null,
+        IReadOnlyDictionary<string, string[]>? validationErrors = null)
+        : base(result, errorType, errorMessage, errorCode, validationErrors)
     {
     }
 }

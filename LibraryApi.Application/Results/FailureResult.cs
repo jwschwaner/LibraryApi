@@ -6,7 +6,11 @@ namespace LibraryApi.Application.Results;
 /// </summary>
 internal static class FailureResult
 {
-    public static TResponse Create<TResponse>(ErrorType errorType, string errorMessage)
+    public static TResponse Create<TResponse>(
+        ErrorType errorType,
+        string errorMessage,
+        string? errorCode = null,
+        IReadOnlyDictionary<string, string[]>? validationErrors = null)
         where TResponse : BaseResult
     {
         // Get the inner result type from TResponse (e.g., TResult from CommandResult<TResult>)
@@ -18,9 +22,11 @@ internal static class FailureResult
             : typeof(QueryResult);
 
         var failureMethod = factoryType
-            .GetMethod(nameof(CommandResult.Failure), [typeof(ErrorType), typeof(string)])!
+            .GetMethod(
+                nameof(CommandResult.Failure),
+                [typeof(ErrorType), typeof(string), typeof(string), typeof(IReadOnlyDictionary<string, string[]>)])!
             .MakeGenericMethod(resultType);
 
-        return (TResponse)failureMethod.Invoke(null, [errorType, errorMessage])!;
+        return (TResponse)failureMethod.Invoke(null, [errorType, errorMessage, errorCode, validationErrors])!;
     }
 }

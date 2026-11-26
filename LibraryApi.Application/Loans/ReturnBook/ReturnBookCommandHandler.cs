@@ -1,6 +1,5 @@
 using LibraryApi.Application.Interfaces;
 using LibraryApi.Application.Results;
-using LibraryApi.Domain.Common;
 using LibraryApi.Domain.Loans;
 using Mediator;
 using MongoDB.Driver;
@@ -20,14 +19,7 @@ public sealed class ReturnBookCommandHandler(IApplicationDbContext dbContext, Ti
         if (loan is null)
             return CommandResult.NotFound<EmptyResult>("Loan");
 
-        try
-        {
-            loan.Return(timeProvider.GetUtcNow().UtcDateTime);
-        }
-        catch (DomainException ex)
-        {
-            return CommandResult.Conflict<EmptyResult>(ex.Message);
-        }
+        loan.Return(timeProvider.GetUtcNow().UtcDateTime);
 
         await dbContext.Loans.ReplaceOneAsync(Builders<Loan>.Filter.Eq(l => l.Id, loan.Id), loan, cancellationToken: cancellationToken);
 

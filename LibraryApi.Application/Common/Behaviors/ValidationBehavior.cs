@@ -44,6 +44,10 @@ public class ValidationBehavior<TRequest, TResponse>(
             typeof(TRequest).Name,
             errorMessage);
 
-        return FailureResult.Create<TResponse>(ErrorType.Validation, errorMessage);
+        var errorsByField = failures
+            .GroupBy(f => f.PropertyName)
+            .ToDictionary(g => g.Key, g => g.Select(f => f.ErrorMessage).Distinct().ToArray());
+
+        return FailureResult.Create<TResponse>(ErrorType.Validation, errorMessage, validationErrors: errorsByField);
     }
 }

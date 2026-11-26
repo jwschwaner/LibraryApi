@@ -74,6 +74,13 @@ public abstract class IntegrationTestBase(MongoDbFixture mongoDb) : IAsyncLifeti
     protected Task<ApiResponse<T>> DeleteAsync<T>(string path) =>
         SendAsync<T>(new HttpRequestMessage(HttpMethod.Delete, path));
 
+    /// <summary>Posts <paramref name="rawJson"/> as it is, for bodies a typed request can't produce.</summary>
+    protected Task<ApiResponse<T>> PostRawAsync<T>(string path, string rawJson) =>
+        SendAsync<T>(new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = new StringContent(rawJson, System.Text.Encoding.UTF8, "application/json")
+        });
+
     private async Task<ApiResponse<T>> SendAsync<T>(HttpRequestMessage request)
     {
         using var response = await _client.SendAsync(request);
@@ -81,11 +88,9 @@ public abstract class IntegrationTestBase(MongoDbFixture mongoDb) : IAsyncLifeti
 
         return response.IsSuccessStatusCode
             ? new ApiResponse<T>(response.StatusCode, true, rawBody, Deserialize<T>(rawBody), null)
-            : new ApiResponse<T>(response.StatusCode, false, rawBody, default, Deserialize<ErrorBody>(rawBody)?.Error);
+            : new ApiResponse<T>(response.StatusCode, false, rawBody, default, Deserialize<ApiProblem>(rawBody));
     }
 
     private static T? Deserialize<T>(string rawBody) =>
         string.IsNullOrWhiteSpace(rawBody) ? default : JsonSerializer.Deserialize<T>(rawBody, Json);
-
-    private sealed record ErrorBody(ApiError Error);
 }

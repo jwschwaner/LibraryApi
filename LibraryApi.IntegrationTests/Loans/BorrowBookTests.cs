@@ -3,6 +3,7 @@ using LibraryApi.Api.Controllers.Loans.Requests;
 using LibraryApi.Application.Loans;
 using LibraryApi.Domain.Authors;
 using LibraryApi.Domain.Books;
+using LibraryApi.Domain.Loans;
 using LibraryApi.Domain.Members;
 using LibraryApi.Tests.Common;
 using LibraryApi.Tests.Common.Builders;
@@ -52,7 +53,7 @@ public sealed class BorrowBookTests(MongoDbFixture mongoDb) : IntegrationTestBas
         var response = await PostAsync<LoanResponse>("/loans", new BorrowBookRequest(book.Id, _member.Id));
 
         // Assert
-        CommonAssertions.IsConflict(response, "All copies of this book are on loan");
+        CommonAssertions.IsConflict(response, "All copies of this book are on loan", LoanErrors.NoCopiesAvailable);
     }
 
     [Fact]
@@ -67,7 +68,7 @@ public sealed class BorrowBookTests(MongoDbFixture mongoDb) : IntegrationTestBas
         var response = await PostAsync<LoanResponse>("/loans", new BorrowBookRequest(book.Id, _member.Id));
 
         // Assert
-        CommonAssertions.IsConflict(response, "Member must return overdue books before borrowing more");
+        CommonAssertions.IsConflict(response, "Member must return overdue books before borrowing more", LoanErrors.MemberHasOverdueLoans);
     }
 
     [Fact]
@@ -82,7 +83,7 @@ public sealed class BorrowBookTests(MongoDbFixture mongoDb) : IntegrationTestBas
         var response = await PostAsync<LoanResponse>("/loans", new BorrowBookRequest(book.Id, _member.Id));
 
         // Assert
-        CommonAssertions.IsConflict(response, "Member already has 3 books on loan");
+        CommonAssertions.IsConflict(response, "Member already has 3 books on loan", LoanErrors.LoanLimitReached);
     }
 
     [Fact]
@@ -96,6 +97,18 @@ public sealed class BorrowBookTests(MongoDbFixture mongoDb) : IntegrationTestBas
 
         // Assert
         CommonAssertions.StatusCodeMatches(response, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Given_a_body_that_is_not_json_When_borrowing_a_book_Then_bad_request_is_returned_as_problem_details()
+    {
+        // Act
+        var response = await PostRawAsync<LoanResponse>("/loans", "{ not json");
+
+        // Assert: MVC rejects the body itself, in the same ProblemDetails format as our own errors
+        CommonAssertions.StatusCodeMatches(response, HttpStatusCode.BadRequest);
+        Assert.Equal(400, response.Error?.Status);
+        Assert.NotNull(response.Error?.Title);
     }
 
     private async Task<Book> SeedBookAsync()

@@ -1,5 +1,6 @@
 using System.Net;
 using LibraryApi.Application.Books;
+using LibraryApi.Domain.Loans;
 using LibraryApi.Tests.Common;
 using LibraryApi.Tests.Common.Builders;
 using LibraryApi.Tests.Common.Http;
@@ -43,7 +44,7 @@ public sealed class ReturnBookTests(MongoDbFixture mongoDb) : IntegrationTestBas
         var response = await PostAsync<object>($"/loans/{loan.Id}/return");
 
         // Assert
-        CommonAssertions.IsConflict(response, "This loan has already been returned");
+        CommonAssertions.IsConflict(response, "This loan has already been returned", LoanErrors.AlreadyReturned);
     }
 
     [Fact]

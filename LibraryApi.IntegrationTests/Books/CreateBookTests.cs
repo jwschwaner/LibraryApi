@@ -67,6 +67,6 @@ public sealed class CreateBookTests(MongoDbFixture mongoDb) : IntegrationTestBas
             "/books", new CreateBookRequest("The Hobbit", "978-0547928227", 1937, author.Id, 1));
 
         // Assert
-        CommonAssertions.StatusCodeMatches(response, HttpStatusCode.UnprocessableEntity);
+        CommonAssertions.IsValidationError(response, "Isbn");
     }
 }

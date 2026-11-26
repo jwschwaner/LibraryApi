@@ -10,20 +10,29 @@ public static class CommandResult
 
     public static CommandResult<TResult> Failure<TResult>(ErrorType errorType) => new(default, errorType);
 
-    public static CommandResult<TResult> Failure<TResult>(ErrorType errorType, string errorMessage) =>
-        new(default, errorType, errorMessage);
+    public static CommandResult<TResult> Failure<TResult>(
+        ErrorType errorType,
+        string errorMessage,
+        string? errorCode = null,
+        IReadOnlyDictionary<string, string[]>? validationErrors = null) =>
+        new(default, errorType, errorMessage, errorCode, validationErrors);
 
     public static CommandResult<TResult> NotFound<TResult>(string? resourceName = null) =>
         new(default, ErrorType.NotFound, resourceName != null ? $"{resourceName} not found" : "Resource not found");
 
-    public static CommandResult<TResult> Conflict<TResult>(string conflictMessage) =>
-        new(default, ErrorType.Conflict, conflictMessage);
+    public static CommandResult<TResult> Conflict<TResult>(string conflictMessage, string? errorCode = null) =>
+        new(default, ErrorType.Conflict, conflictMessage, errorCode);
 }
 
 public class CommandResult<TResult> : BaseResult<TResult>
 {
-    internal CommandResult(TResult? result, ErrorType errorType = ErrorType.None, string? errorMessage = null)
-        : base(result, errorType, errorMessage)
+    internal CommandResult(
+        TResult? result,
+        ErrorType errorType = ErrorType.None,
+        string? errorMessage = null,
+        string? errorCode = null,
+        IReadOnlyDictionary<string, string[]>? validationErrors = null)
+        : base(result, errorType, errorMessage, errorCode, validationErrors)
     {
     }
 }

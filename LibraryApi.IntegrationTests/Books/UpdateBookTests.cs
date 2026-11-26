@@ -1,6 +1,7 @@
 using System.Net;
 using LibraryApi.Api.Controllers.Books.Requests;
 using LibraryApi.Application.Books;
+using LibraryApi.Domain.Books;
 using LibraryApi.Tests.Common.Builders;
 using LibraryApi.Tests.Common.Http;
 using LibraryApi.Tests.Common.MongoDb;
@@ -41,6 +42,6 @@ public sealed class UpdateBookTests(MongoDbFixture mongoDb) : IntegrationTestBas
         var response = await PutAsync<object>($"/books/{book.Id}", new UpdateBookRequest(book.Title, 2000, 1));
 
         // Assert
-        CommonAssertions.IsConflict(response, "Cannot reduce to 1 copies while 2 are on loan");
+        CommonAssertions.IsConflict(response, "Cannot reduce to 1 copies while 2 are on loan", BookErrors.CopiesOnLoan);
     }
 }
